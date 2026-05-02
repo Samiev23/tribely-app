@@ -9,7 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.tribely.app.core.ui.theme.TribelyTheme
-import com.tribely.app.feature.auth.ConnectionTestScreen
+import com.tribely.app.navigation.TribelyNavGraph
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ConnectionTestScreen()
+                    TribelyNavGraph()
                 }
             }
         }

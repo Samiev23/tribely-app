@@ -11,12 +11,25 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.storage.storage
+import io.ktor.http.ContentType
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.util.UUID
+
+@Serializable
+private data class NewSubmission(
+    val id: String,
+    val daily_roll_id: String,
+    val user_id: String,
+    val media_url: String,
+    val media_type: String
+)
 
 class DailyRollRepository {
 
@@ -122,5 +135,54 @@ class DailyRollRepository {
             totalMembers = members.size,
             completedCount = submittedUserIds.size
         )
+    }
+
+    /**
+     * Загружает фото в Supabase Storage bucket "submissions"
+     * по пути {user_id}/{submission_id}.jpg и создаёт запись в таблице submissions.
+     * Возвращает submission_id.
+     */
+    suspend fun uploadSubmission(
+        rollId: String,
+        imageBytes: ByteArray
+    ): Result<String> = runCatching {
+        val tag = "TribelyUpload"
+        android.util.Log.d(tag, "uploadSubmission: started, bytes=${imageBytes.size}")
+
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id
+            ?: error("Not authenticated")
+        android.util.Log.d(tag, "userId=$userId, rollId=$rollId")
+
+        val submissionId = UUID.randomUUID().toString()
+        val storagePath = "$userId/$submissionId.jpg"
+        android.util.Log.d(tag, "storagePath=$storagePath")
+
+        val uploadStart = System.currentTimeMillis()
+        SupabaseManager.client
+            .storage
+            .from("submissions")
+            .upload(storagePath, imageBytes) {
+                upsert = false
+                contentType = ContentType.Image.JPEG
+            }
+        val uploadElapsed = System.currentTimeMillis() - uploadStart
+        android.util.Log.d(tag, "Storage upload complete in ${uploadElapsed}ms")
+
+        val dbStart = System.currentTimeMillis()
+        SupabaseManager.client
+            .from("submissions")
+            .insert(
+                NewSubmission(
+                    id = submissionId,
+                    daily_roll_id = rollId,
+                    user_id = userId,
+                    media_url = storagePath,
+                    media_type = "photo"
+                )
+            )
+        val dbElapsed = System.currentTimeMillis() - dbStart
+        android.util.Log.d(tag, "DB insert complete in ${dbElapsed}ms, submissionId=$submissionId")
+
+        submissionId
     }
 }

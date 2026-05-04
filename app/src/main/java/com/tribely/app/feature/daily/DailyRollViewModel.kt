@@ -22,12 +22,22 @@ sealed interface DailyRollUiState {
     data class Error(val message: String) : DailyRollUiState
 }
 
+sealed interface UploadState {
+    data object Idle : UploadState
+    data object Uploading : UploadState
+    data object Done : UploadState
+    data class Failed(val message: String) : UploadState
+}
+
 class DailyRollViewModel(
     private val repository: DailyRollRepository = DailyRollRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<DailyRollUiState>(DailyRollUiState.Loading)
     val uiState: StateFlow<DailyRollUiState> = _uiState.asStateFlow()
+
+    private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
+    val uploadState: StateFlow<UploadState> = _uploadState.asStateFlow()
 
     /**
      * Дожидаемся активной сессии Supabase. SDK переходит в SessionStatus.Authenticated
@@ -59,4 +69,26 @@ class DailyRollViewModel(
     }
 
     fun refresh(groupId: String) = loadRoll(groupId)
+
+    /**
+     * Загрузка фото-ответа: сжатие уже сделано в UI-слое, тут только сетевая часть.
+     * После успешной загрузки перезагружаем состояние, чтобы увидеть свой submission в списке.
+     */
+    fun submitPhoto(rollId: String, imageBytes: ByteArray, groupId: String) {
+        _uploadState.value = UploadState.Uploading
+        viewModelScope.launch {
+            repository.uploadSubmission(rollId, imageBytes)
+                .onSuccess {
+                    _uploadState.value = UploadState.Done
+                    loadRoll(groupId)
+                }
+                .onFailure {
+                    _uploadState.value = UploadState.Failed(it.message ?: "Ошибка загрузки")
+                }
+        }
+    }
+
+    fun resetUpload() {
+        _uploadState.value = UploadState.Idle
+    }
 }

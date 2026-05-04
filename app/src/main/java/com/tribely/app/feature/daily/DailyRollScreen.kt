@@ -1,6 +1,10 @@
 package com.tribely.app.feature.daily
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -44,8 +48,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tribely.app.core.data.SessionManager
 import com.tribely.app.core.data.model.DailyRollState
@@ -63,7 +70,11 @@ import com.tribely.app.core.data.model.MemberSubmissionStatus
 import com.tribely.app.core.data.repository.AuthRepository
 import com.tribely.app.core.ui.theme.TribelyAccent
 import com.tribely.app.core.ui.theme.TribelyPink
+import com.tribely.app.core.util.ImageUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 @Composable
 fun DailyRollScreen(
@@ -80,9 +91,97 @@ fun DailyRollScreen(
     val groupName by sessionManager.groupNameFlow.collectAsState(initial = null)
 
     val uiState by viewModel.uiState.collectAsState()
+    val uploadState by viewModel.uploadState.collectAsState()
+
+    var pendingCameraFile by remember { mutableStateOf<File?>(null) }
+    var capturedFile by remember { mutableStateOf<File?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val file = pendingCameraFile
+        if (success && file != null && file.exists() && file.length() > 0) {
+            capturedFile = file
+        } else {
+            file?.delete()
+        }
+        pendingCameraFile = null
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val (file, uri) = ImageUtils.createCameraImageFile(context)
+            pendingCameraFile = file
+            cameraLauncher.launch(uri)
+        } else {
+            Toast.makeText(
+                context,
+                "Без доступа к камере не получится сделать фото 📷",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    fun launchCamera() {
+        val cameraGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (cameraGranted) {
+            val (file, uri) = ImageUtils.createCameraImageFile(context)
+            pendingCameraFile = file
+            cameraLauncher.launch(uri)
+        } else {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     LaunchedEffect(groupId) {
         groupId?.let { viewModel.loadRoll(it) }
+    }
+
+    val captured = capturedFile
+    if (captured != null) {
+        val challengeText = (uiState as? DailyRollUiState.Success)?.data?.challenge?.textRu ?: ""
+        val rollId = (uiState as? DailyRollUiState.Success)?.data?.roll?.id
+
+        PhotoPreviewScreen(
+            photoFile = captured,
+            challengeText = challengeText,
+            isUploading = uploadState is UploadState.Uploading,
+            errorMessage = (uploadState as? UploadState.Failed)?.message,
+            onRetake = {
+                if (uploadState !is UploadState.Uploading) {
+                    captured.delete()
+                    capturedFile = null
+                    viewModel.resetUpload()
+                }
+            },
+            onSend = {
+                val currentGroupId = groupId
+                if (rollId != null && currentGroupId != null) {
+                    scope.launch {
+                        val bytes = withContext(Dispatchers.IO) {
+                            ImageUtils.compressImageToBytes(captured)
+                        }
+                        viewModel.submitPhoto(rollId, bytes, currentGroupId)
+                    }
+                }
+            }
+        )
+
+        LaunchedEffect(uploadState) {
+            if (uploadState is UploadState.Done) {
+                captured.delete()
+                capturedFile = null
+                Toast.makeText(context, "Принято! +50 XP 🎉", Toast.LENGTH_SHORT).show()
+                viewModel.resetUpload()
+            }
+        }
+        return
     }
 
     Box(
@@ -107,13 +206,7 @@ fun DailyRollScreen(
                 state = state.data,
                 userName = userName ?: "",
                 groupName = groupName ?: "",
-                onMakePhoto = {
-                    Toast.makeText(
-                        context,
-                        "Камера будет в следующем промпте 📸",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                },
+                onMakePhoto = { launchCamera() },
                 onLogout = {
                     scope.launch {
                         authRepo.signOut()
@@ -206,9 +299,7 @@ private fun DailyRollContent(
 
         Spacer(Modifier.height(16.dp))
 
-        TimerCard(
-            members = state.members
-        )
+        TimerCard(members = state.members)
 
         Spacer(Modifier.height(20.dp))
 

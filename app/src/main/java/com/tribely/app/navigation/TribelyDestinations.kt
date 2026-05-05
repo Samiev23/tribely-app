@@ -7,3 +7,9 @@ object TribelyDestinations {
     const val GROUP_SELECT = "group_select"
     const val MAIN = "main"
 }
+
+object TribelyTabs {
+    const val DAILY = "tab_daily"
+    const val FEED = "tab_feed"
+    const val PROFILE = "tab_profile"
+}

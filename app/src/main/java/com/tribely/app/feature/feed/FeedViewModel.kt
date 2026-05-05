@@ -1,11 +1,11 @@
-package com.tribely.app.feature.daily
+package com.tribely.app.feature.feed
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.tribely.app.core.data.model.DailyRollState
 import com.tribely.app.core.data.model.ReactionType
 import com.tribely.app.core.data.model.ReactionsState
+import com.tribely.app.core.data.model.SubmissionWithAuthor
 import com.tribely.app.core.data.repository.DailyRollRepository
 import com.tribely.app.core.data.repository.ReactionsRepository
 import com.tribely.app.core.network.SupabaseManager
@@ -25,20 +25,13 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private const val RT_TAG = "Tribely-RT"
 
-sealed interface DailyRollUiState {
-    data object Loading : DailyRollUiState
-    data class Success(val data: DailyRollState) : DailyRollUiState
-    data class Error(val message: String) : DailyRollUiState
+sealed interface FeedUiState {
+    data object Loading : FeedUiState
+    data class Success(val submissions: List<SubmissionWithAuthor>) : FeedUiState
+    data class Error(val message: String) : FeedUiState
 }
 
-sealed interface UploadState {
-    data object Idle : UploadState
-    data object Uploading : UploadState
-    data object Done : UploadState
-    data class Failed(val message: String) : UploadState
-}
-
-class DailyRollViewModel(
+class FeedViewModel(
     private val repository: DailyRollRepository = DailyRollRepository()
 ) : ViewModel() {
 
@@ -46,16 +39,9 @@ class DailyRollViewModel(
     private var realtimeJob: Job? = null
     private var reactionsCache: Map<String, ReactionsState> = emptyMap()
 
-    private val _uiState = MutableStateFlow<DailyRollUiState>(DailyRollUiState.Loading)
-    val uiState: StateFlow<DailyRollUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow<FeedUiState>(FeedUiState.Loading)
+    val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
 
-    private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
-    val uploadState: StateFlow<UploadState> = _uploadState.asStateFlow()
-
-    /**
-     * Дожидаемся активной сессии Supabase. SDK переходит в SessionStatus.Authenticated
-     * после того как успешно загружен/создан токен. До этого RPC будут отвечать "Not authenticated".
-     */
     private suspend fun awaitAuthenticated(timeoutMs: Long = 5000) {
         withTimeoutOrNull(timeoutMs) {
             SupabaseManager.client.auth.sessionStatus
@@ -64,8 +50,8 @@ class DailyRollViewModel(
         }
     }
 
-    fun loadRoll(groupId: String) {
-        _uiState.value = DailyRollUiState.Loading
+    fun loadFeed(groupId: String) {
+        _uiState.value = FeedUiState.Loading
         viewModelScope.launch {
             awaitAuthenticated()
 
@@ -75,45 +61,21 @@ class DailyRollViewModel(
                 attempts++
             }
 
-            repository.loadDailyRollState(groupId)
+            repository.loadGroupFeed(groupId)
                 .onSuccess {
-                    _uiState.value = DailyRollUiState.Success(it.withCachedReactions())
+                    _uiState.value = FeedUiState.Success(it.withCachedReactions())
                     reloadReactions()
                     startRealtimeSubscription()
                 }
-                .onFailure { _uiState.value = DailyRollUiState.Error(it.message ?: "Неизвестная ошибка") }
+                .onFailure { _uiState.value = FeedUiState.Error(it.message ?: "Ошибка загрузки") }
         }
-    }
-
-    fun refresh(groupId: String) = loadRoll(groupId)
-
-    /**
-     * Загрузка фото-ответа: сжатие уже сделано в UI-слое, тут только сетевая часть.
-     * После успешной загрузки перезагружаем состояние, чтобы увидеть свой submission в списке.
-     */
-    fun submitPhoto(rollId: String, imageBytes: ByteArray, groupId: String, caption: String?) {
-        _uploadState.value = UploadState.Uploading
-        viewModelScope.launch {
-            repository.uploadSubmission(rollId, imageBytes, caption)
-                .onSuccess {
-                    _uploadState.value = UploadState.Done
-                    loadRoll(groupId)
-                }
-                .onFailure {
-                    _uploadState.value = UploadState.Failed(it.message ?: "Ошибка загрузки")
-                }
-        }
-    }
-
-    fun resetUpload() {
-        _uploadState.value = UploadState.Idle
     }
 
     fun toggleReaction(submissionId: String, type: ReactionType) {
         val state = _uiState.value
-        if (state !is DailyRollUiState.Success) return
+        if (state !is FeedUiState.Success) return
 
-        val currentSubmission = state.data.submissions.find { it.id == submissionId } ?: return
+        val currentSubmission = state.submissions.find { it.id == submissionId } ?: return
         if (currentSubmission.isMine) return
 
         val currentlyOn = when (type) {
@@ -121,7 +83,7 @@ class DailyRollViewModel(
             ReactionType.LAUGH -> currentSubmission.reactions.myLaugh
         }
 
-        val updatedSubs = state.data.submissions.map { sub ->
+        val updatedSubs = state.submissions.map { sub ->
             if (sub.id == submissionId) {
                 val reactions = sub.reactions
                 sub.copy(
@@ -149,12 +111,12 @@ class DailyRollViewModel(
             }
         }
         reactionsCache = updatedSubs.associate { it.id to it.reactions }
-        _uiState.value = state.copy(data = state.data.copy(submissions = updatedSubs))
+        _uiState.value = state.copy(submissions = updatedSubs)
 
         viewModelScope.launch {
             reactionsRepo.toggleReaction(submissionId, type, currentlyOn)
                 .onFailure {
-                    Log.e(RT_TAG, "Daily toggleReaction failed: submissionId=$submissionId type=$type", it)
+                    Log.e(RT_TAG, "Feed toggleReaction failed: submissionId=$submissionId type=$type", it)
                     reloadReactions()
                 }
         }
@@ -162,51 +124,51 @@ class DailyRollViewModel(
 
     private suspend fun reloadReactions() {
         val state = _uiState.value
-        if (state !is DailyRollUiState.Success) {
-            Log.d(RT_TAG, "Daily reloadReactions skipped: state is not Success")
+        if (state !is FeedUiState.Success) {
+            Log.d(RT_TAG, "Feed reloadReactions skipped: state is not Success")
             return
         }
 
-        val ids = state.data.submissions.map { it.id }
+        val ids = state.submissions.map { it.id }
         if (ids.isEmpty()) {
-            Log.d(RT_TAG, "Daily reloadReactions skipped: no submissions")
+            Log.d(RT_TAG, "Feed reloadReactions skipped: no submissions")
             return
         }
 
-        Log.d(RT_TAG, "Daily reloadReactions: loading ${ids.size} submissions")
+        Log.d(RT_TAG, "Feed reloadReactions: loading ${ids.size} submissions")
         reactionsRepo.loadReactions(ids).onSuccess { reactionsBySubmission ->
             val current = _uiState.value
-            if (current !is DailyRollUiState.Success) return@onSuccess
+            if (current !is FeedUiState.Success) return@onSuccess
 
-            val updated = current.data.submissions.map { sub ->
+            val updated = current.submissions.map { sub ->
                 sub.copy(reactions = reactionsBySubmission[sub.id] ?: ReactionsState())
             }
             reactionsCache = updated.associate { it.id to it.reactions }
-            _uiState.value = current.copy(data = current.data.copy(submissions = updated))
-            Log.d(RT_TAG, "Daily reloadReactions: applied ${reactionsBySubmission.size} reaction states")
+            _uiState.value = current.copy(submissions = updated)
+            Log.d(RT_TAG, "Feed reloadReactions: applied ${reactionsBySubmission.size} reaction states")
         }.onFailure {
-            Log.e(RT_TAG, "Daily reloadReactions failed", it)
+            Log.e(RT_TAG, "Feed reloadReactions failed", it)
         }
     }
 
-    fun startRealtimeSubscription() {
+    private fun startRealtimeSubscription() {
         if (realtimeJob?.isActive == true) {
-            Log.d(RT_TAG, "Daily realtime subscription already active")
+            Log.d(RT_TAG, "Feed realtime subscription already active")
             return
         }
 
         realtimeJob = viewModelScope.launch {
-            Log.d(RT_TAG, "Daily realtime subscription starting")
+            Log.d(RT_TAG, "Feed realtime subscription starting")
             runCatching { reactionsRepo.connectRealtime() }
-                .onFailure { Log.e(RT_TAG, "Daily realtime connect failed", it) }
+                .onFailure { Log.e(RT_TAG, "Feed realtime connect failed", it) }
             try {
-                reactionsRepo.subscribeToReactionChanges("reactions-daily").collect {
-                    Log.d(RT_TAG, "Daily realtime event received, reloading reactions")
+                reactionsRepo.subscribeToReactionChanges("reactions-feed").collect {
+                    Log.d(RT_TAG, "Feed realtime event received, reloading reactions")
                     reloadReactions()
                 }
             } finally {
                 withContext(NonCancellable) {
-                    reactionsRepo.disconnectChannel("reactions-daily")
+                    reactionsRepo.disconnectChannel("reactions-feed")
                 }
             }
         }
@@ -217,13 +179,11 @@ class DailyRollViewModel(
         super.onCleared()
     }
 
-    private fun DailyRollState.withCachedReactions(): DailyRollState {
+    private fun List<SubmissionWithAuthor>.withCachedReactions(): List<SubmissionWithAuthor> {
         if (reactionsCache.isEmpty()) return this
 
-        return copy(
-            submissions = submissions.map { submission ->
-                submission.copy(reactions = reactionsCache[submission.id] ?: submission.reactions)
-            }
-        )
+        return map { submission ->
+            submission.copy(reactions = reactionsCache[submission.id] ?: submission.reactions)
+        }
     }
 }

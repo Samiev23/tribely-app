@@ -24,7 +24,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import java.io.File
 
+private const val MaxCaptionLength = 200
+
 @Composable
 fun PhotoPreviewScreen(
     photoFile: File,
@@ -43,8 +51,10 @@ fun PhotoPreviewScreen(
     isUploading: Boolean,
     errorMessage: String?,
     onRetake: () -> Unit,
-    onSend: () -> Unit
+    onSubmit: (String?) -> Unit
 ) {
+    var caption by remember { mutableStateOf("") }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -101,6 +111,47 @@ fun PhotoPreviewScreen(
 
         Spacer(Modifier.height(16.dp))
 
+        TextField(
+            value = caption,
+            onValueChange = { value ->
+                if (value.length <= MaxCaptionLength) {
+                    caption = value
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isUploading,
+            placeholder = {
+                Text(
+                    text = "Добавь подпись (необязательно)",
+                    color = Color.White.copy(alpha = 0.45f)
+                )
+            },
+            supportingText = {
+                Text(
+                    text = "${caption.length}/$MaxCaptionLength",
+                    color = Color.White.copy(alpha = 0.55f),
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.End
+                )
+            },
+            shape = RoundedCornerShape(14.dp),
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                disabledTextColor = Color.White.copy(alpha = 0.5f),
+                focusedContainerColor = Color.White.copy(alpha = 0.08f),
+                unfocusedContainerColor = Color.White.copy(alpha = 0.08f),
+                disabledContainerColor = Color.White.copy(alpha = 0.05f),
+                cursorColor = Color.White,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent
+            ),
+            maxLines = 3
+        )
+
+        Spacer(Modifier.height(16.dp))
+
         if (errorMessage != null) {
             Text(
                 text = "❌ $errorMessage",
@@ -113,7 +164,7 @@ fun PhotoPreviewScreen(
         }
 
         Button(
-            onClick = onSend,
+            onClick = { onSubmit(caption.trim().ifEmpty { null }) },
             enabled = !isUploading,
             modifier = Modifier
                 .fillMaxWidth()

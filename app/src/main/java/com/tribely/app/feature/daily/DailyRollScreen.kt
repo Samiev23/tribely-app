@@ -5,12 +5,6 @@ import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
@@ -55,7 +48,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -79,6 +71,7 @@ import java.io.File
 @Composable
 fun DailyRollScreen(
     onLoggedOut: () -> Unit = {},
+    onFullscreenChanged: (Boolean) -> Unit = {},
     viewModel: DailyRollViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -95,6 +88,11 @@ fun DailyRollScreen(
 
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
     var capturedFile by remember { mutableStateOf<File?>(null) }
+    var fullscreenIndex by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(fullscreenIndex, capturedFile) {
+        onFullscreenChanged(fullscreenIndex != null || capturedFile != null)
+    }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
@@ -143,6 +141,20 @@ fun DailyRollScreen(
         groupId?.let { viewModel.loadRoll(it) }
     }
 
+    val fsIndex = fullscreenIndex
+    val successData = (uiState as? DailyRollUiState.Success)?.data
+    if (fsIndex != null && successData != null && successData.submissions.isNotEmpty()) {
+        FullscreenPhotoViewer(
+            submissions = successData.submissions,
+            initialIndex = fsIndex,
+            onClose = { fullscreenIndex = null },
+            onReact = { submissionId, type ->
+                viewModel.toggleReaction(submissionId, type)
+            }
+        )
+        return
+    }
+
     val captured = capturedFile
     if (captured != null) {
         val challengeText = (uiState as? DailyRollUiState.Success)?.data?.challenge?.textRu ?: ""
@@ -160,14 +172,14 @@ fun DailyRollScreen(
                     viewModel.resetUpload()
                 }
             },
-            onSend = {
+            onSubmit = { caption ->
                 val currentGroupId = groupId
                 if (rollId != null && currentGroupId != null) {
                     scope.launch {
                         val bytes = withContext(Dispatchers.IO) {
                             ImageUtils.compressImageToBytes(captured)
                         }
-                        viewModel.submitPhoto(rollId, bytes, currentGroupId)
+                        viewModel.submitPhoto(rollId, bytes, currentGroupId, caption)
                     }
                 }
             }
@@ -207,12 +219,7 @@ fun DailyRollScreen(
                 userName = userName ?: "",
                 groupName = groupName ?: "",
                 onMakePhoto = { launchCamera() },
-                onLogout = {
-                    scope.launch {
-                        authRepo.signOut()
-                        onLoggedOut()
-                    }
-                }
+                onPhotoClick = { index -> fullscreenIndex = index }
             )
         }
     }
@@ -282,14 +289,14 @@ private fun DailyRollContent(
     userName: String,
     groupName: String,
     onMakePhoto: () -> Unit,
-    onLogout: () -> Unit
+    onPhotoClick: (Int) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(top = 16.dp, bottom = 24.dp)
+            .padding(top = 16.dp, bottom = 140.dp)
     ) {
         Header(
             groupName = groupName,
@@ -301,11 +308,7 @@ private fun DailyRollContent(
 
         TimerCard(members = state.members)
 
-        Spacer(Modifier.height(20.dp))
-
-        DiceBlock()
-
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(28.dp))
 
         ChallengeCard(
             categoryRu = challengeCategoryRu(state.challenge.category),
@@ -335,9 +338,9 @@ private fun DailyRollContent(
             Spacer(Modifier.height(6.dp))
         }
 
-        Spacer(Modifier.height(24.dp))
-
         if (state.mySubmissionId == null) {
+            Spacer(Modifier.height(24.dp))
+
             Button(
                 onClick = onMakePhoto,
                 modifier = Modifier
@@ -357,47 +360,13 @@ private fun DailyRollContent(
                 Spacer(Modifier.width(8.dp))
                 Text("Сделать фото", fontWeight = FontWeight.ExtraBold)
             }
-        } else {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = TribelyAccent.copy(alpha = 0.15f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, TribelyAccent)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = null,
-                        tint = TribelyAccent,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Принято! +50 XP",
-                        color = TribelyAccent,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
-            }
         }
 
-        Spacer(Modifier.height(24.dp))
-
-        OutlinedButton(
-            onClick = onLogout,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text(
-                "Выйти из аккаунта",
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                style = MaterialTheme.typography.bodySmall
+        if (state.submissions.isNotEmpty()) {
+            Spacer(Modifier.height(28.dp))
+            SubmissionsFeed(
+                submissions = state.submissions,
+                onSubmissionClick = onPhotoClick
             )
         }
     }
@@ -495,41 +464,6 @@ private fun TimerCard(members: List<MemberSubmissionStatus>) {
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun DiceBlock() {
-    val infiniteTransition = rememberInfiniteTransition(label = "dice_pulse")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scale"
-    )
-
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .scale(scale)
-                .size(132.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(TribelyAccent),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Casino,
-                contentDescription = null,
-                tint = Color.Black,
-                modifier = Modifier.size(76.dp)
-            )
         }
     }
 }

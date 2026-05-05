@@ -56,5 +56,22 @@ data class DailyRollState(
     val members: List<MemberSubmissionStatus>,
     val mySubmissionId: String?,
     val totalMembers: Int,
-    val completedCount: Int
+    val completedCount: Int,
+    val submissions: List<SubmissionWithAuthor> = emptyList()
+)
+
+/**
+ * Submission участника группы вместе с информацией об авторе и signed URL для медиа.
+ */
+data class SubmissionWithAuthor(
+    val id: String,
+    val userId: String,
+    val authorName: String,
+    val authorAvatarColor: Long,
+    val mediaUrl: String,
+    val mediaType: String,
+    val createdAt: String,
+    val isMine: Boolean,
+    val caption: String? = null,
+    val reactions: ReactionsState = ReactionsState()
 )

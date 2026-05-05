@@ -8,8 +8,8 @@ import androidx.navigation.compose.rememberNavController
 import com.tribely.app.feature.auth.LoginScreen
 import com.tribely.app.feature.auth.SplashScreen
 import com.tribely.app.feature.auth.WelcomeScreen
-import com.tribely.app.feature.daily.DailyRollScreen
 import com.tribely.app.feature.group.GroupSelectScreen
+import com.tribely.app.feature.main.MainTabsScreen
 
 @Composable
 fun TribelyNavGraph(
@@ -60,7 +60,7 @@ fun TribelyNavGraph(
         }
 
         composable(TribelyDestinations.MAIN) {
-            DailyRollScreen(
+            MainTabsScreen(
                 onLoggedOut = {
                     navController.navigate(TribelyDestinations.WELCOME) {
                         popUpTo(0) { inclusive = true }

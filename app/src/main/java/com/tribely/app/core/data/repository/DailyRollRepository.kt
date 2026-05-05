@@ -6,6 +6,7 @@ import com.tribely.app.core.data.model.DailyRollState
 import com.tribely.app.core.data.model.GroupMemberWithProfile
 import com.tribely.app.core.data.model.MemberSubmissionStatus
 import com.tribely.app.core.data.model.SubmissionShort
+import com.tribely.app.core.data.model.SubmissionWithAuthor
 import com.tribely.app.core.network.SupabaseManager
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
@@ -13,6 +14,11 @@ import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.storage.storage
 import io.ktor.http.ContentType
+import kotlinx.datetime.Clock
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.todayIn
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -21,14 +27,35 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.util.UUID
+import kotlin.time.Duration
 
 @Serializable
-private data class NewSubmission(
+private data class NewSubmissionRow(
     val id: String,
     val daily_roll_id: String,
     val user_id: String,
     val media_url: String,
-    val media_type: String
+    val media_type: String,
+    val caption: String? = null
+)
+
+@Serializable
+private data class SubmissionFull(
+    val id: String,
+    val daily_roll_id: String,
+    val user_id: String,
+    val media_url: String,
+    val media_type: String,
+    val created_at: String,
+    val caption: String? = null
+)
+
+@Serializable
+private data class DailyRollRow(
+    val id: String,
+    val group_id: String,
+    val challenge_id: String,
+    val roll_date: String
 )
 
 class DailyRollRepository {
@@ -127,14 +154,73 @@ class DailyRollRepository {
             )
         }.sortedByDescending { it.hasSubmitted }
 
+        val submissionsWithAuthors = getSubmissionsWithAuthors(roll.id, statuses)
+            .getOrDefault(emptyList())
+
         DailyRollState(
             roll = roll,
             challenge = challenge,
             members = statuses,
             mySubmissionId = mySubmission?.id,
             totalMembers = members.size,
-            completedCount = submittedUserIds.size
+            completedCount = submittedUserIds.size,
+            submissions = submissionsWithAuthors
         )
+    }
+
+    /**
+     * Возвращает все submissions для броска вместе с информацией об авторах
+     * и сгенерированными signed URLs для медиа (срок жизни — 1 час).
+     */
+    suspend fun getSubmissionsWithAuthors(
+        rollId: String,
+        members: List<MemberSubmissionStatus>
+    ): Result<List<SubmissionWithAuthor>> = runCatching {
+        val currentUserId = SupabaseManager.client.auth.currentUserOrNull()?.id
+
+        val submissions = SupabaseManager.client
+            .from("submissions")
+            .select {
+                filter { eq("daily_roll_id", rollId) }
+            }
+            .decodeList<SubmissionFull>()
+
+        if (submissions.isEmpty()) return@runCatching emptyList()
+
+        val membersByUserId = members.associateBy { it.userId }
+        val signedUrlExpiry = Duration.parse("1h")
+
+        submissions.map { sub ->
+            val signedUrl = SupabaseManager.client
+                .storage
+                .from("submissions")
+                .createSignedUrl(sub.media_url, expiresIn = signedUrlExpiry)
+
+            val author = membersByUserId[sub.user_id]
+            SubmissionWithAuthor(
+                id = sub.id,
+                userId = sub.user_id,
+                authorName = author?.displayName ?: "User",
+                authorAvatarColor = computeAvatarColor(author?.displayName ?: "User"),
+                mediaUrl = signedUrl,
+                mediaType = sub.media_type,
+                createdAt = sub.created_at,
+                isMine = sub.user_id == currentUserId,
+                caption = sub.caption
+            )
+        }.sortedByDescending { it.createdAt }
+    }
+
+    private fun computeAvatarColor(name: String): Long {
+        val palette = listOf(
+            0xFFFF3EA5L,
+            0xFFD4FF00L,
+            0xFF00E5FFL,
+            0xFFFFAA00L,
+            0xFFA855F7L
+        )
+        val hash = kotlin.math.abs(name.hashCode())
+        return palette[hash % palette.size]
     }
 
     /**
@@ -144,7 +230,8 @@ class DailyRollRepository {
      */
     suspend fun uploadSubmission(
         rollId: String,
-        imageBytes: ByteArray
+        imageBytes: ByteArray,
+        caption: String?
     ): Result<String> = runCatching {
         val tag = "TribelyUpload"
         android.util.Log.d(tag, "uploadSubmission: started, bytes=${imageBytes.size}")
@@ -172,17 +259,60 @@ class DailyRollRepository {
         SupabaseManager.client
             .from("submissions")
             .insert(
-                NewSubmission(
+                NewSubmissionRow(
                     id = submissionId,
                     daily_roll_id = rollId,
                     user_id = userId,
                     media_url = storagePath,
-                    media_type = "photo"
+                    media_type = "photo",
+                    caption = caption
                 )
             )
         val dbElapsed = System.currentTimeMillis() - dbStart
         android.util.Log.d(tag, "DB insert complete in ${dbElapsed}ms, submissionId=$submissionId")
 
         submissionId
+    }
+
+    /**
+     * Возвращает все submissions группы за последние [daysBack] дней (по умолчанию 7).
+     * Используется на вкладке "Лента". Все signed URLs уже сгенерированы.
+     */
+    suspend fun loadGroupFeed(
+        groupId: String,
+        daysBack: Int = 7
+    ): Result<List<SubmissionWithAuthor>> = runCatching {
+        val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+        val fromDate = today.minus(daysBack, DateTimeUnit.DAY)
+
+        val rolls = SupabaseManager.client
+            .from("daily_rolls")
+            .select {
+                filter {
+                    eq("group_id", groupId)
+                    gte("roll_date", fromDate.toString())
+                }
+            }
+            .decodeList<DailyRollRow>()
+
+        if (rolls.isEmpty()) return@runCatching emptyList()
+
+        val members = getGroupMembersWithProfiles(groupId).getOrThrow().map { gm ->
+            MemberSubmissionStatus(
+                userId = gm.userId,
+                displayName = gm.profiles?.displayName ?: "User",
+                avatarUrl = gm.profiles?.avatarUrl,
+                hasSubmitted = false,
+                submittedAt = null
+            )
+        }
+
+        val allSubs = mutableListOf<SubmissionWithAuthor>()
+        for (roll in rolls) {
+            val subs = getSubmissionsWithAuthors(roll.id, members).getOrDefault(emptyList())
+            allSubs += subs
+        }
+
+        allSubs.sortedByDescending { it.createdAt }
     }
 }

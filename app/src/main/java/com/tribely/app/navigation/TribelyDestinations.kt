@@ -10,6 +10,5 @@ object TribelyDestinations {
 
 object TribelyTabs {
     const val DAILY = "tab_daily"
-    const val FEED = "tab_feed"
     const val PROFILE = "tab_profile"
 }

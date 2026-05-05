@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Icon
@@ -29,7 +28,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tribely.app.feature.daily.DailyRollScreen
-import com.tribely.app.feature.feed.FeedScreen
 import com.tribely.app.feature.profile.ProfileScreen
 import com.tribely.app.navigation.TribelyTabs
 
@@ -48,8 +46,7 @@ fun MainTabsScreen(
 
     val tabs = remember {
         listOf(
-            TabItem(TribelyTabs.DAILY, Icons.Filled.Casino, "Бросок"),
-            TabItem(TribelyTabs.FEED, Icons.Filled.PhotoLibrary, "Лента"),
+            TabItem(TribelyTabs.DAILY, Icons.Filled.PhotoLibrary, "Лента"),
             TabItem(TribelyTabs.PROFILE, Icons.Filled.Person, "Профиль")
         )
     }
@@ -64,7 +61,6 @@ fun MainTabsScreen(
                 onLoggedOut = onLoggedOut,
                 onFullscreenChanged = { isOpen -> hideBottomBar = isOpen }
             )
-            TribelyTabs.FEED -> FeedScreen()
             TribelyTabs.PROFILE -> ProfileScreen(onLoggedOut = onLoggedOut)
         }
 

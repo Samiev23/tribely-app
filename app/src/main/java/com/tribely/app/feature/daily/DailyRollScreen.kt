@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -59,10 +60,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tribely.app.core.data.SessionManager
 import com.tribely.app.core.data.model.DailyRollState
 import com.tribely.app.core.data.model.MemberSubmissionStatus
+import com.tribely.app.core.data.model.ReactionType
 import com.tribely.app.core.data.repository.AuthRepository
 import com.tribely.app.core.ui.theme.TribelyAccent
 import com.tribely.app.core.ui.theme.TribelyPink
 import com.tribely.app.core.util.ImageUtils
+import com.tribely.app.feature.feed.FeedPostCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -219,7 +222,10 @@ fun DailyRollScreen(
                 userName = userName ?: "",
                 groupName = groupName ?: "",
                 onMakePhoto = { launchCamera() },
-                onPhotoClick = { index -> fullscreenIndex = index }
+                onPhotoClick = { index -> fullscreenIndex = index },
+                onReact = { submissionId, type ->
+                    viewModel.toggleReaction(submissionId, type)
+                }
             )
         }
     }
@@ -289,8 +295,15 @@ private fun DailyRollContent(
     userName: String,
     groupName: String,
     onMakePhoto: () -> Unit,
-    onPhotoClick: (Int) -> Unit
+    onPhotoClick: (Int) -> Unit,
+    onReact: (String, ReactionType) -> Unit
 ) {
+    val context = LocalContext.current
+    val showSoon = { feature: String ->
+        Toast.makeText(context, "$feature — скоро", Toast.LENGTH_SHORT).show()
+    }
+    val hasMySubmission = state.submissions.any { it.isMine }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -299,24 +312,26 @@ private fun DailyRollContent(
             .padding(top = 16.dp, bottom = 140.dp)
     ) {
         Header(
-            groupName = groupName,
-            completedCount = state.completedCount,
-            totalMembers = state.totalMembers
+            groupName = groupName
         )
 
         Spacer(Modifier.height(16.dp))
 
-        TimerCard(members = state.members)
+        if (!hasMySubmission) {
+            TimerCard(members = state.members)
 
-        Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(14.dp))
 
-        ChallengeCard(
-            categoryRu = challengeCategoryRu(state.challenge.category),
-            text = state.challenge.textRu,
-            mediaTypeRu = if (state.challenge.mediaType == "video") "Видео" else "Фото",
-            groupName = groupName,
-            totalMembers = state.totalMembers
-        )
+            ChallengeCard(
+                categoryRu = challengeCategoryRu(state.challenge.category),
+                text = state.challenge.textRu,
+                mediaTypeRu = if (state.challenge.mediaType == "video") "Видео" else "Фото",
+                groupName = groupName,
+                totalMembers = state.totalMembers
+            )
+        } else {
+            CompactChallengeCard(text = state.challenge.textRu)
+        }
 
         Spacer(Modifier.height(24.dp))
 
@@ -338,7 +353,7 @@ private fun DailyRollContent(
             Spacer(Modifier.height(6.dp))
         }
 
-        if (state.mySubmissionId == null) {
+        if (!hasMySubmission) {
             Spacer(Modifier.height(24.dp))
 
             Button(
@@ -363,20 +378,37 @@ private fun DailyRollContent(
         }
 
         if (state.submissions.isNotEmpty()) {
-            Spacer(Modifier.height(28.dp))
-            SubmissionsFeed(
-                submissions = state.submissions,
-                onSubmissionClick = onPhotoClick
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                text = "СЕГОДНЯ ЖГЛИ 🔥",
+                color = Color.White.copy(alpha = 0.45f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.5.sp,
+                modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
             )
+
+            state.submissions.forEachIndexed { index, submission ->
+                FeedPostCard(
+                    submission = submission,
+                    challengeText = state.challenge.textRu,
+                    bgColorIndex = index,
+                    onPhotoClick = { onPhotoClick(index) },
+                    onReact = { type ->
+                        onReact(submission.id, type)
+                    },
+                    onMenuClick = { showSoon("Меню") },
+                    onCommentClick = { showSoon("Комментарии") }
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun Header(
-    groupName: String,
-    completedCount: Int,
-    totalMembers: Int
+    groupName: String
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -388,17 +420,6 @@ private fun Header(
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
                 style = MaterialTheme.typography.labelSmall,
                 letterSpacing = 1.5.sp
-            )
-            Text(
-                text = "Бросок дня",
-                color = MaterialTheme.colorScheme.onBackground,
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.ExtraBold
-            )
-            Text(
-                text = "$completedCount/$totalMembers уже выполнили",
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
-                style = MaterialTheme.typography.bodySmall
             )
         }
         IconButton(
@@ -518,6 +539,42 @@ private fun ChallengeCard(
                 text = "👥 $groupName · $totalMembers чел",
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                 style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactChallengeCard(text: String) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = Color.White.copy(alpha = 0.04f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            Color.White.copy(alpha = 0.06f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "✦",
+                color = TribelyAccent,
+                fontSize = 13.sp
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = text.ifBlank { "Задание дня" },
+                color = Color.White.copy(alpha = 0.65f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
         }
     }

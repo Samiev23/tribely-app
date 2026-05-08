@@ -10,5 +10,9 @@ object TribelyDestinations {
 
 object TribelyTabs {
     const val DAILY = "tab_daily"
+    const val QUESTS = "tab_quests"
+    const val CHALLENGES = "tab_challenges"
+    const val CHAT = "tab_chat"
+    const val FRIENDS = "tab_friends"
     const val PROFILE = "tab_profile"
 }

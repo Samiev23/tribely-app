@@ -6,10 +6,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.tribely.app.feature.auth.LoginScreen
-import com.tribely.app.feature.auth.SplashScreen
 import com.tribely.app.feature.auth.WelcomeScreen
 import com.tribely.app.feature.group.GroupSelectScreen
 import com.tribely.app.feature.main.MainTabsScreen
+import com.tribely.app.ui.screens.SplashScreen
 
 @Composable
 fun TribelyNavGraph(

@@ -1,6 +1,7 @@
 package com.tribely.app.core.data.repository
 
 import com.tribely.app.core.data.model.Group
+import com.tribely.app.core.data.model.GroupMemberWithProfile
 import com.tribely.app.core.network.SupabaseManager
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
@@ -90,6 +91,18 @@ class GroupRepository {
                 filter { isIn("id", groupIds) }
             }
             .decodeList<Group>()
+    }
+
+    /**
+     * Возвращает участников группы вместе с коротким профилем.
+     */
+    suspend fun getGroupMembersWithProfiles(groupId: String): Result<List<GroupMemberWithProfile>> = runCatching {
+        SupabaseManager.client
+            .from("group_members")
+            .select(Columns.raw("user_id,role,joined_at,profiles(id,display_name,avatar_url)")) {
+                filter { eq("group_id", groupId) }
+            }
+            .decodeList<GroupMemberWithProfile>()
     }
 
     @Serializable

@@ -5,13 +5,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -59,11 +64,17 @@ fun PhotoPreviewScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .systemBarsPadding()
-            .padding(horizontal = 20.dp)
-            .padding(top = 12.dp, bottom = 24.dp)
+            .imePadding()
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             IconButton(
                 onClick = onRetake,
                 enabled = !isUploading
@@ -89,7 +100,8 @@ fun PhotoPreviewScreen(
             Text(
                 text = challengeText,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                style = MaterialTheme.typography.bodyLarge
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(horizontal = 20.dp)
             )
             Spacer(Modifier.height(16.dp))
         }
@@ -98,6 +110,7 @@ fun PhotoPreviewScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .padding(horizontal = 20.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(Color.Black)
         ) {
@@ -109,106 +122,113 @@ fun PhotoPreviewScreen(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
-
-        TextField(
-            value = caption,
-            onValueChange = { value ->
-                if (value.length <= MaxCaptionLength) {
-                    caption = value
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isUploading,
-            placeholder = {
-                Text(
-                    text = "Добавь подпись (необязательно)",
-                    color = Color.White.copy(alpha = 0.45f)
-                )
-            },
-            supportingText = {
-                Text(
-                    text = "${caption.length}/$MaxCaptionLength",
-                    color = Color.White.copy(alpha = 0.55f),
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            Column {
+                TextField(
+                    value = caption,
+                    onValueChange = { value ->
+                        if (value.length <= MaxCaptionLength) {
+                            caption = value
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.End
+                    enabled = !isUploading,
+                    placeholder = {
+                        Text(
+                            text = "Добавь подпись (необязательно)",
+                            color = Color.White.copy(alpha = 0.45f)
+                        )
+                    },
+                    supportingText = {
+                        Text(
+                            text = "${caption.length}/$MaxCaptionLength",
+                            color = Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.End
+                        )
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        disabledTextColor = Color.White.copy(alpha = 0.5f),
+                        focusedContainerColor = Color.White.copy(alpha = 0.08f),
+                        unfocusedContainerColor = Color.White.copy(alpha = 0.08f),
+                        disabledContainerColor = Color.White.copy(alpha = 0.05f),
+                        cursorColor = Color.White,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent
+                    ),
+                    maxLines = 3
                 )
-            },
-            shape = RoundedCornerShape(14.dp),
-            colors = TextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                disabledTextColor = Color.White.copy(alpha = 0.5f),
-                focusedContainerColor = Color.White.copy(alpha = 0.08f),
-                unfocusedContainerColor = Color.White.copy(alpha = 0.08f),
-                disabledContainerColor = Color.White.copy(alpha = 0.05f),
-                cursorColor = Color.White,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent
-            ),
-            maxLines = 3
-        )
 
-        Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
-        if (errorMessage != null) {
-            Text(
-                text = "❌ $errorMessage",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-        }
+                if (errorMessage != null) {
+                    Text(
+                        text = "❌ $errorMessage",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
 
-        Button(
-            onClick = { onSubmit(caption.trim().ifEmpty { null }) },
-            enabled = !isUploading,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.Black
-            )
-        ) {
-            if (isUploading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = Color.Black,
-                    strokeWidth = 2.dp
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Загружаем...", fontWeight = FontWeight.ExtraBold)
-            } else {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Отправить", fontWeight = FontWeight.ExtraBold)
+                Button(
+                    onClick = { onSubmit(caption.trim().ifEmpty { null }) },
+                    enabled = !isUploading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.Black
+                    )
+                ) {
+                    if (isUploading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.Black,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Загружаем...", fontWeight = FontWeight.ExtraBold)
+                    } else {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Отправить", fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = onRetake,
+                    enabled = !isUploading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        "Переснять",
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        OutlinedButton(
-            onClick = onRetake,
-            enabled = !isUploading,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text(
-                "Переснять",
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-                fontWeight = FontWeight.Bold
-            )
         }
     }
 }

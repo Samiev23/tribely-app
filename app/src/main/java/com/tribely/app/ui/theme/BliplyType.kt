@@ -13,6 +13,10 @@ val unboundedFamily = FontFamily(
     Font(R.font.unbounded_bold, FontWeight.Bold)
 )
 
+val manropeFamily = FontFamily(
+    Font(R.font.manrope_semibold, FontWeight.SemiBold)
+)
+
 val BliplyLogoTitleStyle = TextStyle(
     fontFamily = unboundedFamily,
     fontWeight = FontWeight.SemiBold,

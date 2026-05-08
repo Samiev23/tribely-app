@@ -5,11 +5,11 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.tribely.app.feature.auth.LoginScreen
-import com.tribely.app.feature.auth.WelcomeScreen
 import com.tribely.app.feature.group.GroupSelectScreen
 import com.tribely.app.feature.main.MainTabsScreen
 import com.tribely.app.ui.screens.SplashScreen
+import com.tribely.app.ui.screens.auth.AuthScreen
+import com.tribely.app.ui.screens.onboarding.OnboardingScreen
 
 @Composable
 fun TribelyNavGraph(
@@ -30,21 +30,32 @@ fun TribelyNavGraph(
         }
 
         composable(TribelyDestinations.WELCOME) {
-            WelcomeScreen(
+            OnboardingScreen(
                 onFinished = {
                     navController.navigate(TribelyDestinations.LOGIN) {
                         popUpTo(TribelyDestinations.WELCOME) { inclusive = true }
                     }
+                },
+                onSkip = {
+                    navController.navigate(TribelyDestinations.LOGIN) {
+                        popUpTo(TribelyDestinations.WELCOME) { inclusive = true }
+                    }
+                },
+                onClose = {
+                    navController.popBackStack()
                 }
             )
         }
 
         composable(TribelyDestinations.LOGIN) {
-            LoginScreen(
-                onLoggedIn = {
+            AuthScreen(
+                onAuthSuccess = {
                     navController.navigate(TribelyDestinations.GROUP_SELECT) {
                         popUpTo(TribelyDestinations.LOGIN) { inclusive = true }
                     }
+                },
+                onBackClick = {
+                    navController.popBackStack()
                 }
             )
         }

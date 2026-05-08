@@ -86,7 +86,7 @@ fun SplashScreen(
             else -> TribelyDestinations.MAIN
         }
 
-        delay(10_000)
+        delay(1_500)
         // TODO: Route to onboarding or the main screen after the final auth flow is confirmed.
         onSplashFinished(destination)
     }

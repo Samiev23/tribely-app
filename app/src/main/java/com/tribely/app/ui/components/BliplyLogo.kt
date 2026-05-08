@@ -24,19 +24,23 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun BliplyLogo(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    size: Dp = 120.dp
 ) {
-    BliplyLogoMark(modifier = modifier)
+    BliplyLogoMark(modifier = modifier, size = size)
 }
 
 @Composable
 fun BliplyLogoMark(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    size: Dp = 120.dp
 ) {
+    val scale = size.value / 120f
     val infiniteTransition = rememberInfiniteTransition(label = "rotation")
     val rotation by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -49,7 +53,7 @@ fun BliplyLogoMark(
     )
 
     Box(
-        modifier = modifier.size(120.dp),
+        modifier = modifier.size(size),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.matchParentSize()) {
@@ -65,25 +69,25 @@ fun BliplyLogoMark(
                         ),
                         center = center
                     ),
-                    cornerRadius = CornerRadius(35.dp.toPx()),
-                    style = Stroke(width = 2.dp.toPx())
+                    cornerRadius = CornerRadius((35 * scale).dp.toPx()),
+                    style = Stroke(width = (2 * scale).dp.toPx())
                 )
             }
         }
 
         Box(
             modifier = Modifier
-                .size(114.dp)
-                .clip(RoundedCornerShape(32.dp))
+                .size(size - 6.dp)
+                .clip(RoundedCornerShape((32 * scale).dp))
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy((14 * scale).dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                GlowingEye(color = Color(0xFFFF3DCC))
-                GlowingEye(color = Color(0xFF8B5CFF))
+                GlowingEye(color = Color(0xFFFF3DCC), scale = scale)
+                GlowingEye(color = Color(0xFF8B5CFF), scale = scale)
             }
         }
     }
@@ -91,29 +95,30 @@ fun BliplyLogoMark(
 
 @Composable
 fun GlowingEye(
-    color: Color
+    color: Color,
+    scale: Float = 1f
 ) {
     Box(
-        modifier = Modifier.size(40.dp),
+        modifier = Modifier.size((40 * scale).dp),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size((40 * scale).dp)
                 .background(
                     brush = Brush.radialGradient(
                         colors = listOf(
                             color.copy(alpha = 0.7f),
                             color.copy(alpha = 0f)
                         ),
-                        radius = 60f
+                        radius = 60f * scale
                     ),
                     shape = CircleShape
                 )
         )
         Box(
             modifier = Modifier
-                .size(16.dp)
+                .size((16 * scale).dp)
                 .background(color, CircleShape)
         )
     }
